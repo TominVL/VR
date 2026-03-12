@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Anaglyphic Stereo Viewer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1a1a1a;
+    color: #ddd;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    width: 350px;
+    min-width: 320px;
+    background: #242424;
+    border-right: 2px solid #333;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  #sidebar h2 {
+    background: #2e2e2e;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-weight: bold;
+    border-bottom: 1px solid #333;
+    letter-spacing: 1px;
+    color: #fff;
+  }
+
+  .section {
+    padding: 12px 16px;
+    border-bottom: 1px solid #333;
+  }
+
+  .section h3 {
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 8px;
+  }
+
+  .row label {
+    flex: 0 0 130px;
+    font-size: 13px;
+    color: #ccc;
+  }
+
+  .row input[type=range] {
+    flex: 1;
+    height: 4px;
+    accent-color: #4af;
+    cursor: pointer;
+  }
+
+  .row .val {
+    flex: 0 0 44px;
+    text-align: right;
+    font-size: 13px;
+    color: #4af;
+    font-family: 'Courier New', monospace;
+  }
+
+  button {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    background: #333;
+    color: #ddd;
+    border: 1px solid #555;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 6px;
+    border-radius: 3px;
+  }
+  button:hover { background: #3a3a3a; border-color: #777; }
+  button.active { background: #1a3a5a; border-color: #4af; color: #4af; }
+
+  /* webcam */
+  #webcam-wrap {
+    position: relative;
+    margin: 8px 0 4px;
+    border: 1px solid #444;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #000;
+    display: none;  /* shown when webcam starts */
+  }
+  #webcam { width: 100%; display: block; }
+  #webcam-status { font-size: 12px; color: #888; margin-top: 4px; }
+
+  /* anaglyph legend */
+  .legend { display: flex; gap: 16px; margin-top: 6px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+
+  /* ── CANVAS AREA ── */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #111;
+    gap: 8px;
+    padding: 12px;
+  }
+
+  #canvas-wrap {
+    border: 2px solid #333;
+    border-radius: 3px;
+    overflow: hidden;
+    line-height: 0;
+  }
+
+  #glcanvas { display: block; cursor: grab; }
+  #glcanvas:active { cursor: grabbing; }
+
+  #status-bar {
+    display: flex;
+    gap: 20px;
+    font-size: 12px;
+    color: #777;
+    font-family: 'Courier New', monospace;
+  }
+  #status-bar span { color: #4af; }
+</style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ── -->
+<aside id="sidebar">
+  <h2>Virich Surface</h2>
+
+  <div class="section">
+    <h3>Stereo Camera</h3>
+
+    <div class="row">
+      <label>Eye Separation</label>
+      <input type="range" id="s-eye" min="0.1" max="5" step="0.05" value="0.5">
+      <span class="val" id="v-eye">0.50</span>
+    </div>
+    <div class="row">
+      <label>Convergence</label>
+      <input type="range" id="s-conv" min="1" max="30" step="0.5" value="8">
+      <span class="val" id="v-conv">8.0</span>
+    </div>
+    <div class="row">
+      <label>FOV (degrees)</label>
+      <input type="range" id="s-fov" min="10" max="90" step="1" value="40">
+      <span class="val" id="v-fov">40</span>
+    </div>
+    <div class="row">
+      <label>Near Clip</label>
+      <input type="range" id="s-near" min="0.1" max="5" step="0.1" value="1">
+      <span class="val" id="v-near">1.0</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Render</h3>
+    <button id="wireframe-btn" class="active">Wireframe: ON</button>
+  </div>
+
+  <div class="section">
+    <h3>Mesh Resolution</h3>
+    <div class="row">
+      <label>U steps</label>
+      <input type="range" id="s-u" min="5" max="80" step="1" value="30">
+      <span class="val" id="v-u">30</span>
+    </div>
+    <div class="row">
+      <label>V steps</label>
+      <input type="range" id="s-v" min="5" max="80" step="1" value="30">
+      <span class="val" id="v-v">30</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>Webcam (Zero-Parallax Plane)</h3>
+    <div id="webcam-wrap">
+      <video id="webcam" autoplay muted playsinline></video>
+    </div>
+    <div id="webcam-status">Camera off</div>
+    <button id="cam-btn">Enable Webcam</button>
+  </div>
+
+  <div class="section">
+    <h3>Anaglyph</h3>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="dot" style="background:#f44;"></div>
+        <span>Left eye — Red</span>
+      </div>
+      <div class="legend-item">
+        <div class="dot" style="background:#0ee;"></div>
+        <span>Right eye — Cyan</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- ── CANVAS ── -->
+<main id="main">
+  <div id="canvas-wrap">
+    <canvas id="glcanvas" width="800" height="580"></canvas>
+  </div>
+  <div id="status-bar">
+    <span id="fps-label">-- FPS</span>
+    <span>Eye: <span id="sb-eye">0.50</span></span>
+    <span>Conv: <span id="sb-conv">8.0</span></span>
+    <span>FOV: <span id="sb-fov">40</span>°</span>
+    <span>Near: <span id="sb-near">1.0</span></span>
+    <span>Parallax: <span style="color:#f44">NEGATIVE</span></span>
+  </div>
+</main>
+
+<script src="shader.gpu"></script>
+<script src="Model.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
